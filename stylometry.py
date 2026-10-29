@@ -64,8 +64,15 @@ def sentence_length_spread(text: str) -> float:
     `stdev` raises on fewer than two values. Decide what that should return
     before the attack set decides for you.
     """
-    # TODO: replace this
-    return 0.0
+    lengths = [len(words(sentence)) for sentence in sentences(text)]
+    if len(lengths) < 2:
+        return 0.0
+    mean_length = statistics.mean(lengths)
+    if mean_length == 0:
+        return 0.0
+    # Coefficient of variation keeps a long paragraph comparable to a short
+    # one.  Higher means a less regular, more varied sentence rhythm.
+    return statistics.stdev(lengths) / mean_length
 
 
 def type_token_ratio(text: str) -> float:
@@ -80,8 +87,10 @@ def type_token_ratio(text: str) -> float:
     directly comparable on it, and if your test inputs vary a lot in length,
     that alone can look like a signal.
     """
-    # TODO: replace this
-    return 0.0
+    tokens = words(text)
+    if not tokens:
+        return 0.0
+    return len(set(tokens)) / len(tokens)
 
 
 def punctuation_density(text: str) -> float:
@@ -94,8 +103,11 @@ def punctuation_density(text: str) -> float:
         more interesting than full stops, because they vary more between
         writers.
     """
-    # TODO: replace this
-    return 0.0
+    non_whitespace = [character for character in text if not character.isspace()]
+    if not non_whitespace:
+        return 0.0
+    punctuation = re.findall(r"[,;:!?—-]", text)
+    return len(punctuation) / len(non_whitespace)
 
 
 # ── Combining them ───────────────────────────────────────────────────────────
@@ -122,8 +134,14 @@ def style_signal(text: str) -> float:
     you trust it. Plain and ordinary, not formal: formal prose reads as *human*
     to signal one, and it is plain writing that gets accused.
     """
-    # TODO: replace this
-    return 0.5
+    spread = min(sentence_length_spread(text) / 0.75, 1.0)
+    variety = type_token_ratio(text)
+    punctuation = min(punctuation_density(text) / 0.06, 1.0)
+
+    # Each measure above is more varied in human-looking writing, so reverse
+    # them before combining: higher output always means "more likely AI".
+    score = 0.45 * (1.0 - spread) + 0.40 * (1.0 - variety) + 0.15 * (1.0 - punctuation)
+    return round(min(max(score, 0.0), 1.0), 4)
 
 
 if __name__ == "__main__":
@@ -139,4 +157,4 @@ if __name__ == "__main__":
     print(f"type_token_ratio         {type_token_ratio(text)}")
     print(f"punctuation_density      {punctuation_density(text)}")
     print(f"style_signal             {style_signal(text)}   (higher = more likely AI)")
-    print("\nAll zeros? These are stubs — Milestone 4 is where you build them.")
+    print("\nHigher style_signal values mean more regular, AI-like text shape.")
