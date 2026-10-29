@@ -42,61 +42,67 @@ Two things worth knowing before you pick numbers:
   a **miss**.
 
 ---
-## 1.
+## 1. False-Positive Target
 
-<!-- Your criterion. It must name a number. -->
-
-
+Across each of the three evaluation trials, of 10 pieces of writing I created myself, at most 0 may be labeled high-confidence AI.
 
 **Why this target:**
+
+A false accusation matters because falsely labeling authentic student work as AI-generated carries severe academic integrity penalties, damages trust between students and educators, and creates anxiety for innocent authors. A zero-tolerance false-positive rate (0 out of 10) sets a strict standard for this evaluation.
 
 
 
 ---
 
-## 2.
+## 2. Label-Coverage Target
 
-<!-- Your criterion. -->
+Across each of the three evaluation trials, of 6 deliberately selected test inputs, all three labels—`human`, `unsure`, and `ai`—must appear at least once.
 
+**Test input breakdown:**
 
+- **2 clearly human-authored texts:** Unedited personal reflections, drafts, or published writing known to predate modern LLMs.
+- **2 ambiguous or hybrid texts:** Human-drafted text lightly edited by AI, or highly formal, formulaic human writing designed to test the model's uncertainty threshold.
+- **2 pure AI-generated texts:** Raw, unedited responses generated directly by an LLM from standard prompts.
 
 **Why this target:**
+
+A functional provenance guard must demonstrate active decision boundaries across the full spectrum of writing. Requiring all three labels prevents the system from collapsing into an overconfident binary classifier that forces artificial certainty onto nuanced, hybrid text, while ensuring it still decisively recognizes unambiguous human and AI writing.
 
 
 
 ---
 
-## 3.
+## 3. Appeal-Path Target
 
-<!-- Your criterion. -->
-
-
+Across each of the three evaluation trials, I will test 2 valid appeals submitted against flagged items: one following a high-confidence `ai` label and one following an `unsure` label. Each appeal must return an immediate successful confirmation, report `under_review` status, and create a `/log` entry containing the content ID, timestamp, and appeal rationale.
 
 **Why this target:**
+
+Because automated AI detectors are probabilistic and prone to false positives, authors require a clear way to challenge a decision. Recording the appeal as `under_review` gives a reviewer an auditable, verifiable record and prevents the challenge from being silently dropped or ignored.
 
 
 
 ---
 
-## 4.
+## 4. Bad-Input Target
 
-<!-- Your criterion. -->
-
-
+Across each of the three evaluation trials, I will test 3 malformed requests representing the primary input-validation boundaries. Missing or empty `text` and missing `creator_id` must return HTTP `400` with a descriptive JSON error message; text exceeding the character limit must return HTTP `413` with a descriptive JSON error message. Every rejected request must create an audit-log entry recording the timestamp and rejection reason, and the service must remain responsive to a subsequent valid request.
 
 **Why this target:**
+
+A production service must withstand malformed or malicious inputs without crashing. Uncaught exceptions or unbounded payloads can exhaust server memory, trigger denial-of-service conditions, and take the system offline for legitimate users. Handling bad inputs gracefully at the boundary ensures high availability, provides actionable feedback so developers can correct malformed requests, and preserves an audit record of rejected activity.
 
 
 
 ---
 
-## 5.
+## 5. Score-Separation Target
 
-<!-- Your criterion. -->
-
-
+Across each of the three evaluation trials, I will evaluate 5 clearly human-authored texts and 5 clearly AI-generated texts (10 total samples) to measure score separation. The average confidence score of the AI group must exceed the average confidence score of the human group by at least 0.50. The lowest-scoring AI text must also score higher than the highest-scoring human text, creating zero rank overlap on these unambiguous inputs.
 
 **Why this target:**
+
+A meaningful classification engine must exhibit wide discriminative separation on polar, unambiguous test cases. If a detector groups both human and AI samples within a narrow score band, such as 0.40 to 0.60, it demonstrates weak signal capture and high vulnerability to random noise. Enforcing an average spread of at least 0.50 tests whether the underlying heuristics produce a decisive, polarized score distribution rather than returning nearly the same score for every input.
 
 
 
