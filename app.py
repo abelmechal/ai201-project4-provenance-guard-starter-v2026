@@ -120,6 +120,20 @@ if config.RATE_LIMITING_ENABLED:
 
 # ── The worked example. Already works. Don't edit. ────────────────────────────
 
+@app.get("/")
+def index():
+    """A browser-friendly starting point for the local API."""
+    return jsonify({
+        "service": "provenance-guard",
+        "message": "Provenance Guard is running. Send JSON to POST /submit to score writing.",
+        "routes": {
+            "GET /health": "service and detector status",
+            "GET /log": "recent audit entries",
+            "POST /submit": "score text with text and creator_id",
+            "POST /appeal": "appeal a decision with content_id and reasoning",
+        },
+    })
+
 @app.post("/ping")
 def ping():
     """
