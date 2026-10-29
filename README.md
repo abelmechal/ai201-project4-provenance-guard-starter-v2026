@@ -36,10 +36,13 @@
 
 ## What This Does
 
-<!-- The path a submission takes, from arriving to the label a reader sees.
-     Six or seven steps — this is the trace you wrote in Milestone 1. -->
-
-
+1. A writer sends `text` and `creator_id` to `POST /submit`.
+2. The service rejects malformed, empty, or oversized input with a clear error and an audit entry.
+3. The local GPT-2 detector scores how predictable the writing is.
+4. The stylometry signal measures sentence-length variation, vocabulary variety, and punctuation density.
+5. `scoring.py::combine_signals` turns the two signal scores into one confidence score from 0 to 1.
+6. `scoring.py::score_to_label` maps that score to a reader-facing label.
+7. The decision is appended to `logs/audit.jsonl`; a writer can use `POST /appeal` to record a challenge and place the item under review.
 
 ---
 
@@ -55,17 +58,29 @@
 
 **What it measures:**
 
+How predictable a local GPT-2 language model finds the submitted text. Low perplexity becomes a higher AI score.
+
 **Why that might differ between human and AI writing:**
 
+Generated prose can use more probable next words and patterns, which may make it easier for a language model to predict.
+
 **What it can't see:**
+
+Predictability is not authorship. Plain, concise human writing, including writing by second-language learners, can be incorrectly treated as AI-like; rare or ornate AI writing can go the other direction.
 
 ### Signal two — the style signal
 
 **What it measures:**
 
+The shape of the text: sentence-length spread, unique-word ratio, and punctuation density.
+
 **Why that might differ between human and AI writing:**
 
+Human writing can have a more uneven rhythm, vocabulary, and punctuation pattern. Regular sentence lengths and repeated vocabulary raise this signal's AI score.
+
 **What it can't see:**
+
+It cannot understand meaning or authorship. Typos, sentence splitting, quotation, or deliberate formatting can change the measurements without changing who wrote the text.
 
 ### The combining rule
 
@@ -74,7 +89,11 @@
 
 **The rule:**
 
+Both signals produce scores where higher means more AI-like. The service takes their equal-weight average. When they disagree, the average moves toward the unsure range rather than treating either signal as conclusive.
+
 **The numbers:**
+
+Model-signal weight: 0.50. Style-signal weight: 0.50. Human threshold: 0.35 or below. Unsure range: above 0.35 and below 0.65. AI threshold: 0.65 or above.
 
 **Where it lives:** `scoring.py::combine_signals`
 
@@ -82,6 +101,8 @@
      somewhere else, say where. -->
 
 **A case where my two signals split, and what my rule does with it:**
+
+For the sample personal reflection below, the model score was 0.5400 while the style score was 0.3233. Their average was 0.4316, so the service returned the unsure label rather than making a high-confidence authorship claim.
 
 
 
@@ -96,16 +117,16 @@
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00–0.35 | This writing looks more likely to have been written by a person. This is not a final judgment. |
+| unsure | >0.35–<0.65 | We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result. |
+| high-confidence AI | 0.65–1.00 | This writing shows patterns often associated with AI-generated text. This is not proof of authorship; you may appeal this result. |
 
 **Why I worded the "unsure" one this way:**
 <!-- It's the hardest of the three. It has to admit uncertainty without
      sounding like an accusation, because the person reading it may well have
      written every word themselves. -->
 
-
+It says the system lacks confidence rather than implying that the writer did something wrong. It also points directly to the appeal path.
 
 ---
 
@@ -121,26 +142,36 @@
      two off the response, so leaving them out costs you next unit's
      diagnostics. -->
 
-```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
-  -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+```powershell
+$body = @{ text = 'I keep a notebook beside the kitchen window. This morning I wrote down the first frost on the grass, a recipe my aunt taught me, and a reminder to call my brother. The notes are small, but they help me notice what I would otherwise forget.'; creator_id = 'sample-writer' } | ConvertTo-Json -Compress
+$body | curl.exe --silent -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" --data-binary "@-"
 ```
 
 ```json
-
+{
+  "confidence": 0.4316,
+  "content_id": "199e6e47-f1ef-4df4-82d7-e371428257c2",
+  "guess": "unsure",
+  "label": "We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.",
+  "model_score": 0.54,
+  "style_score": 0.3233
+}
 ```
 
 **An appeal**
 
-```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
-  -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+```powershell
+$body = @{ content_id = '199e6e47-f1ef-4df4-82d7-e371428257c2'; reasoning = 'I wrote this personal observation myself and would like it reviewed.' } | ConvertTo-Json -Compress
+$body | curl.exe --silent -X POST http://127.0.0.1:5000/appeal -H "Content-Type: application/json" --data-binary "@-"
 ```
 
 ```json
-
+{
+  "content_id": "199e6e47-f1ef-4df4-82d7-e371428257c2",
+  "message": "Your appeal was recorded and is now under review.",
+  "ok": true,
+  "status": "under_review"
+}
 ```
 
 **What the log shows afterwards**
@@ -150,7 +181,26 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 ```
 
 ```json
-
+{
+  "count": 2,
+  "entries": [
+    {
+      "combined_score": 0.4316,
+      "content_id": "199e6e47-f1ef-4df4-82d7-e371428257c2",
+      "creator_id": "sample-writer",
+      "guess": "unsure",
+      "model_score": 0.54,
+      "style_score": 0.3233,
+      "status": "decided"
+    },
+    {
+      "content_id": "199e6e47-f1ef-4df4-82d7-e371428257c2",
+      "event": "appeal",
+      "reasoning": "I wrote this personal observation myself and would like it reviewed.",
+      "status": "under_review"
+    }
+  ]
+}
 ```
 
 ---
@@ -159,15 +209,15 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked Codex to diagnose the starter project's setup failures and prepare a compatible local environment.
+- *What came back:* It identified that the original virtual environment used Python 3.14, while the pinned packages required Python 3.13; it also identified a Windows path-length issue during PyTorch installation.
+- *What I changed:* I used the Python 3.13 environment at a shorter path, installed the pinned dependencies, downloaded the local detector model, and verified the course check passed.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked Codex to help implement and test the two-signal submission pipeline and appeal endpoint while I wrote my own acceptance criteria.
+- *What came back:* It suggested a stylometry implementation, an equal-weight combining rule, input validation, reader-facing labels, and sample requests to test the endpoints.
+- *What I changed:* I used the proposed implementation, tested the response and audit-log behavior, and kept the criteria targets and rationales as my own decisions.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
