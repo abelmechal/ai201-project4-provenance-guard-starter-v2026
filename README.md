@@ -269,6 +269,21 @@ The complete 56-row text report is committed at `results/attack_run_2026-11-11_1
 
 **Audit log evidence:** `logs/audit.jsonl` contains each decision with timestamp, content ID, creator ID, guess, both signal scores, combined score, label, and status. It also contains the flood rejections with `event: "rejected"`, `reason: "rate_limited"`, and `status: "rejected"`.
 
+**Ten actual audit entries (unaltered JSONL):**
+
+```jsonl
+{"timestamp":"2026-11-11T15:17:57-06:00","content_id":"6bae1361-9e0c-4731-93d0-5dd4af3eeb52","creator_id":"attacker_EV01","guess":"unsure","model_score":0.1635,"style_score":0.5379,"combined_score":0.3507,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-11-11T15:17:57-06:00","content_id":"af1875bc-419f-4205-a1fa-38f5e068dea6","creator_id":"attacker_EV02","guess":"unsure","model_score":0.5943,"style_score":0.2041,"combined_score":0.3992,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-11-11T15:17:57-06:00","content_id":"e99ad991-6eb0-43e2-92fe-58df2bd831f5","creator_id":"attacker_EV03","guess":"unsure","model_score":0.6662,"style_score":0.3758,"combined_score":0.521,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-10-29T16:51:14-05:00","content_id":"cc37a228-c103-461c-95ac-38ccd8fb884b","creator_id":"calibration-varied-human-like","guess":"human","model_score":0.1292,"style_score":0.4534,"combined_score":0.2913,"label":"This writing looks more likely to have been written by a person. This is not a final judgment.","status":"decided"}
+{"timestamp":"2026-10-29T16:12:22-05:00","content_id":"7991af37-4c56-4fbc-aaed-efb13977b43e","creator_id":"manual-check","guess":"unsure","model_score":0.5063,"style_score":0.4116,"combined_score":0.4589,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-10-29T16:51:14-05:00","content_id":"cbb188e0-26e0-4ac1-9472-ae6f338850e3","creator_id":"calibration-regular-ai-like","guess":"ai","model_score":0.8249,"style_score":0.5466,"combined_score":0.6857,"label":"This writing shows patterns often associated with AI-generated text. This is not proof of authorship; you may appeal this result.","status":"decided"}
+{"timestamp":"2026-11-11T14:56:45-06:00","creator_id":"flood_tester","event":"rejected","status":"rejected","reason":"rate_limited","limit":"8 per 1 minute"}
+{"timestamp":"2026-10-29T16:12:39-05:00","creator_id":"check","event":"rejected","status":"rejected","reason":"missing_or_empty_text"}
+{"timestamp":"2026-10-29T16:12:39-05:00","creator_id":"check","event":"rejected","status":"rejected","reason":"text_too_large","text_length":12001}
+{"timestamp":"2026-10-29T16:12:22-05:00","content_id":"7991af37-4c56-4fbc-aaed-efb13977b43e","creator_id":"manual-check","event":"appeal","status":"under_review","reasoning":"This is a firsthand account of my repair work."}
+```
+
 **Worst outcome:** FP03 called careful writing by a non-native English speaker AI. A real writer would receive an accusation because the score fell just over the old 0.65 label boundary.
 
 ---
@@ -297,7 +312,7 @@ This representative output was produced by `run_eval.py::main`; the complete rea
 
 **Diagnoses**
 
-Criterion 2 and 5 missed at the signal/combining stage: the model and style signals clustered both human and AI controls in the middle, and the equal-weight average produced mostly `unsure` scores. Criterion 3 missed because no evaluation item earned the required AI label, although all six appeals returned `under_review` and were logged. Criterion 4 missed at the route: a missing `creator_id` becomes `unknown` and is accepted instead of rejected. The evasion failures follow the same signal weakness: short, edited, or stylistically altered AI text pulls at least one signal into the human/unsure region.
+Criterion 2 and 5 missed at the signal/combining stage: the model and style signals clustered the evaluation controls in the middle, and the equal-weight average produced mostly `unsure` scores. This does not mean no input ever reached the AI band: staff attack EV10 scored 0.807 and remained `ai`; the problem is that the evaluation control set did not reliably reach that band. Criterion 3 missed because the criterion requires one AI-labeled and one unsure-labeled appeal per trial. The endpoint itself worked: all six submitted appeals returned `under_review` and were logged. Criterion 4 missed at the route: a missing or non-string `creator_id` is converted to `unknown` before the final validation check and is accepted instead of rejected. The evasion failures follow the same signal weakness: short, edited, or stylistically altered AI text pulls at least one signal into the human/unsure region.
 
 
 
@@ -323,7 +338,7 @@ Complete results: `results/attack_run_2026-11-11_1518_after.md`. FP02, FP03, and
 
 ## What's Still Broken
 
-I would next fix route validation so a missing or non-string creator ID receives a logged 400, then re-run the attack set. I stopped because the assignment permits one measured improvement and the threshold change was the one selected from the false-positive diagnosis. Longer-term, I would recalibrate or replace the signals using a labeled dataset because their score clustering explains the coverage, separation, and evasion failures.
+I would next fix route validation so a missing or non-string creator ID receives a logged 400, then re-run the attack set. I would then calibrate both signals against a labeled validation set and consider sliding-window perplexity for mixed-authorship text. I stopped because the assignment permits one measured improvement and the threshold change was the one selected from the false-positive diagnosis; making route and signal changes too would confound the before/after comparison. Longer-term, signal calibration is needed because score clustering explains the coverage, separation, and evasion failures.
 
 
 
