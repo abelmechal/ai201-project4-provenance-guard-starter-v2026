@@ -225,25 +225,32 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** 8 submissions per minute and 100 submissions per day.
 
 **Why those numbers and not others:**
-<!-- Think about two people: a real writer submitting their own work a few
-     times an hour, and a script sending a thousand variations to map your
-     thresholds. Your numbers have to be liveable for the first and hostile to
-     the second. -->
+Eight submissions per minute leaves room for a writer to submit a draft and a
+few revisions, but makes rapid threshold mapping expensive. The daily cap
+allows ordinary use while preventing a single account from steadily probing the
+detector over many hours. I chose a lower minute limit rather than relying only
+on the daily cap because a burst is the pattern most likely to disrupt a local
+model service.
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+**What a caller counts as:** `creator_id` when the request provides a non-empty
+one; otherwise, the caller's network address. Per-creator limits prevent one
+script from avoiding the cap by sending requests from the same address under
+many retries of the same account. The fallback keeps malformed requests from
+sharing an unbounded bucket.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
 ```
-
+201 201 201 201 201 201 201 201 429 429 429 429 429 429 429
 ```
+
+Produced by `run_attacks.py --flood 15`; the committed evidence is
+`results/flood_2026-11-11_1456.md`.
 
 ---
 
