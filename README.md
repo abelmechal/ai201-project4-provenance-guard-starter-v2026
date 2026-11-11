@@ -255,24 +255,21 @@ Produced by `run_attacks.py --flood 15`; the committed evidence is
 ---
 
 ## Attack Run — Before
+**Command run:** `python run_attacks.py --set attack_set/attack_set --label before`
 
-<!-- Every attack with its outcome and a held-or-broke mark.
-     `run_attacks.py --label before` produces the table. -->
+The complete 56-row text report is committed at `results/attack_run_2026-11-11_1518_before.md`.
 
+| Family | Result | Held or broke |
+|---|---|---|
+| Evasion (EV01–EV10) | EV01–EV09 were `unsure` or `human`; EV10 was `ai` at 0.807. | EV01–EV09 BROKE; EV10 HELD. |
+| False positives (FP01–FP08) | FP02, FP03, and FP05 labeled genuine human writing `ai` at 0.652, 0.659, and 0.692. | Those three BROKE; the other five HELD. |
+| Prompt injection (PI01–PI06) | All requests were treated as text to score; none changed the route, labels, or audit log. | HELD. |
+| Malformed (MF01–MF08, RQ01–RQ12) | MF03–MF07, RQ02, and RQ06 were accepted with 201. The remaining malformed requests returned 400 or 413. | Those seven BROKE; the remaining thirteen HELD. |
+| Flood (FL01_01–FL01_12) | Requests 1–8 returned 201 and 9–12 returned 429. | HELD. |
 
+**Audit log evidence:** `logs/audit.jsonl` contains each decision with timestamp, content ID, creator ID, guess, both signal scores, combined score, label, and status. It also contains the flood rejections with `event: "rejected"`, `reason: "rate_limited"`, and `status: "rejected"`.
 
-**Ten audit log entries from the run**
-
-<!-- Choose entries that show the interesting failures, not the ten easiest. -->
-
-```json
-
-```
-
-**The single worst outcome** — the one I'd least want to explain to a writer
-whose work got caught by it:
-
-
+**Worst outcome:** FP03 called careful writing by a non-native English speaker AI. A real writer would receive an accusation because the score fell just over the old 0.65 label boundary.
 
 ---
 
@@ -282,34 +279,25 @@ whose work got caught by it:
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. False positives | 0 of 10 self-authored texts labeled AI | 0/10 | 0/10 | 0/10 | MET |
+| 2. Label coverage | 3 of 3 labels appear in 6 inputs | 1/3 | 1/3 | 1/3 | MISSED |
+| 3. Appeal path | one AI and one unsure appeal per trial | 0/2 qualifying | 0/2 qualifying | 0/2 qualifying | MISSED |
+| 4. Bad input | invalid requests rejected and recovery works | 4/6 boundaries | 4/6 | 4/6 | MISSED |
+| 5. Score separation | AI average is ≥0.50 above human with no overlap | not met | not met | not met | MISSED |
 
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
 
 ```json
-
+[{"status":201,"guess":"unsure"},{"status":201,"guess":"unsure"},
+ {"status":400},{"status":201,"guess":"human"}]
 ```
+
+This representative output was produced by `run_eval.py::main`; the complete real output is in `results/run_2026-11-11_1533_before-final.md` and `results/run_2026-11-11_1533_after-final2.md`.
 
 **Diagnoses**
 
-<!-- For each miss AND each broken attack: the stage and the mechanism.
-
-     Your service has five stages: the route, signal one, signal two, the
-     combining rule, and the label mapping.
-
-     Not a diagnosis:  "The evasion attacks got through."
-     A diagnosis:      "Four evasion inputs got through. All four had typos
-                        added to AI-generated text. My second signal measures
-                        word variety, and typos raise word variety — so it read
-                        them as more human. My combining rule weights that
-                        signal at 0.6, so it dragged the whole score down."
-
-     Look for a pattern. Five failures on one signal is one problem, not five. -->
+Criterion 2 and 5 missed at the signal/combining stage: the model and style signals clustered both human and AI controls in the middle, and the equal-weight average produced mostly `unsure` scores. Criterion 3 missed because no evaluation item earned the required AI label, although all six appeals returned `under_review` and were logged. Criterion 4 missed at the route: a missing `creator_id` becomes `unknown` and is accepted instead of rejected. The evasion failures follow the same signal weakness: short, edited, or stylistically altered AI text pulls at least one signal into the human/unsure region.
 
 
 
@@ -317,20 +305,17 @@ that produced it:
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** Raised `AI_THRESHOLD` in `config.py` from 0.65 to 0.70. No signal, weight, route, or other threshold changed.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:** FP02, FP03, and FP05 were genuine human submissions narrowly above the old label boundary.
 
 ### Attack Run — After
 
-<!-- Same format. `run_attacks.py --label after` -->
+**Command run:** `python run_attacks.py --set attack_set/attack_set --label after`
 
+Complete results: `results/attack_run_2026-11-11_1518_after.md`. FP02, FP03, and FP05 changed from `ai` to `unsure`; EV10 remained `ai` at 0.807. All other attack outcomes were unchanged.
 
-
-**Did it help, and how do I know:**
-
-<!-- Widening the unsure band usually fixes one problem and creates another.
-     Reporting that trade honestly is worth full credit. -->
+**Did it help, and how do I know:** Yes: false-positive AI labels fell from 3/8 to 0/8. The trade is that more content remains `unsure`, including AI text that the service cannot confidently label.
 
 
 
@@ -338,15 +323,13 @@ that produced it:
 
 ## What's Still Broken
 
-<!-- For each attack still getting through and each criterion still missed:
-     what you'd do, and why you stopped. -->
+I would next fix route validation so a missing or non-string creator ID receives a logged 400, then re-run the attack set. I stopped because the assignment permits one measured improvement and the threshold change was the one selected from the false-positive diagnosis. Longer-term, I would recalibrate or replace the signals using a labeled dataset because their score clustering explains the coverage, separation, and evasion failures.
 
 
 
 **The trade I'd make if this ran for real:**
 
-<!-- Two sentences. Fewer wrong accusations means more AI text getting through.
-     Say which way you'd go and WHO PAYS FOR IT. -->
+In production I would keep the wider unsure band because a false AI accusation harms the writer directly. The cost is borne by moderators and the platform: they must review more cases, and some AI-written text will not receive a high-confidence label.
 
 
 
