@@ -393,3 +393,58 @@ I chose Shape B — harden against failure. I am adding one failure-handling lay
 **Running It**
 
 I am using Path B, local with logs. The reproducible start command, Python version, dependencies, and local model requirements are documented in [RUNNING.md](RUNNING.md).
+
+**Instrumentation**
+
+Every `POST /submit` appends a JSON record to `logs/audit.jsonl`. A record has a UTC timestamp, route, creator ID, privacy-preserving input character count, output status, duration in milliseconds, and either the decision scores or the failure reason and stage. The service also exposes `detector_runtime.in_flight` on `GET /health` so a slow worker can be observed without modifying code.
+
+Ten measured normal-run records are below. Each is a separate request with a 355-character input; all show timestamp, input, output, and duration as named fields.
+
+```json
+{"timestamp":"2026-11-17T06:10:18+00:00","creator_id":"capstone-cost-1","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":767.12,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:19+00:00","creator_id":"capstone-cost-2","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":431.08,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:19+00:00","creator_id":"capstone-cost-3","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":359.67,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:20+00:00","creator_id":"capstone-cost-4","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":354.74,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:20+00:00","creator_id":"capstone-cost-5","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":168.94,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:20+00:00","creator_id":"capstone-cost-6","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":154.62,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:20+00:00","creator_id":"capstone-cost-7","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":145.94,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:20+00:00","creator_id":"capstone-cost-8","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":151.64,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:20+00:00","creator_id":"capstone-cost-9","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":147.33,"status":"decided"}
+{"timestamp":"2026-11-17T06:10:21+00:00","creator_id":"capstone-cost-10","input_summary":{"text_length":355},"output_summary":{"http_status":201},"duration_ms":155.68,"status":"decided"}
+```
+
+**What It Costs**
+
+I measured the end-to-end local compute time of ten warmed, normal submissions: 853.93, 440.99, 370.59, 363.58, 174.90, 161.46, 151.38, 157.87, 152.28, and 162.27 ms. Their mean was **298.92 ms per run**. This project has no API charge because GPT-2 runs locally; time is the measured cost. At 100 submissions per day, the arithmetic is `100 × 0.29892 = 29.892` seconds of warmed request compute per day, plus the fixed startup warm-up cost.
+
+**Run Log and Verdicts**
+
+Before the warm-up improvement, the first recovery attempt missed: an 18-second artificial delay was followed by cold GPT-2 loading, so `in_flight` remained true past the expected drain window and the recovery request received `503 detector_busy`. That diagnostic run is preserved in `logs/audit.jsonl` as `capstone-recovery-1` with `reason: "detector_busy"`.
+
+| Criterion | Target | Before result | After Run 1 | After Run 2 | After Run 3 | Verdict |
+|---|---|---|---|---|---|---|
+| 1. Timeout response | 503 `detector_timeout` within 15.5 s | 503 at 15.01 s | 503 at 15.015 s | 503 at 15.005 s | 503 at 15.003 s | MET |
+| 2. Timeout audit record | 5 required fields, 3/3 | present | present | present | present | MET |
+| 3. Busy-worker protection | 503 `detector_busy` within 0.5 s | 503 in 0.17 ms | 503 in 0.34 ms | 503 in 0.34 ms | 503 in 8.82 ms | MET |
+| 4. Recovery after slow job | 201 plus 6 fields, 3/3 | MISSED: worker still busy after cold load | 201 in 314.60 ms | 201 in 262.94 ms | 201 in 311.48 ms | MET after improvement |
+| 5. Normal-path regression | 201, six fields, under 8 s, 3/3 | 201 in 313.32 ms | 201 in 266.73 ms | 201 in 282.29 ms | — | MET |
+
+Real outputs are committed in `results/capstone_baseline_before.json`, `results/capstone_hardening_after.json`, and `logs/audit.jsonl`.
+
+**Diagnoses**
+
+The pre-improvement miss was in the detector stage. The one-shot test delay ended after roughly 18 seconds, but `detector.model_signal()` then lazy-loaded GPT-2 in that same worker. The caller had already timed out at 15 seconds, and the worker remained in flight while the model loaded, so the recovery request correctly received `detector_busy`. The route and busy gate were functioning; the readiness assumption was wrong.
+
+**The Improvement**
+
+I added the opt-in `AI201_WARMUP_DETECTOR=1` startup hook. It calls `detector.warm_up()` before Flask listens on its port. The post-improvement runs used this setting with the same one-shot 18-second delay. All three recovery requests returned `201` with the six required fields after `in_flight` changed to false. The improvement therefore addressed the diagnosed cold-start mechanism rather than changing the timeout target.
+
+**What's Still Broken**
+
+The normal default remains lazy loading because startup warm-up is opt-in. A user who starts without `AI201_WARMUP_DETECTOR=1` can still encounter a cold first request, which may use the timeout/busy path while GPT-2 loads. I stopped here because the capstone goal was safe behavior and observable recovery, not a full deployment redesign. If this were real, the first next step would be to make readiness explicit in deployment configuration and expose a `ready` state separate from a merely live HTTP server; that prevents traffic from reaching a process before its model is available.
+
+**How I Used AI**
+
+I asked Codex to review whether my own criteria could be tested from their wording alone and to compare their field names against the service. It identified mismatches such as `/score` versus `/submit` and `failure_reason` versus `reason`; I revised my criteria to match the observable system behavior.
+
+I also asked Codex to help implement and test the bounded worker, structured logging, one-shot delay hook, and startup warm-up. It produced code and test commands; I used the real output to identify the cold-start recovery miss, then used that diagnosis to select and measure the warm-up improvement.
