@@ -225,47 +225,66 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** 8 submissions per minute and 100 submissions per day.
 
 **Why those numbers and not others:**
-<!-- Think about two people: a real writer submitting their own work a few
-     times an hour, and a script sending a thousand variations to map your
-     thresholds. Your numbers have to be liveable for the first and hostile to
-     the second. -->
+Eight submissions per minute leaves room for a writer to submit a draft and a
+few revisions, but makes rapid threshold mapping expensive. The daily cap
+allows ordinary use while preventing a single account from steadily probing the
+detector over many hours. I chose a lower minute limit rather than relying only
+on the daily cap because a burst is the pattern most likely to disrupt a local
+model service.
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+**What a caller counts as:** `creator_id` when the request provides a non-empty
+one; otherwise, the caller's network address. Per-creator limits prevent one
+script from avoiding the cap by sending requests from the same address under
+many retries of the same account. The fallback keeps malformed requests from
+sharing an unbounded bucket.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
 ```
-
+201 201 201 201 201 201 201 201 429 429 429 429 429 429 429
 ```
+
+Produced by `run_attacks.py --flood 15`; the committed evidence is
+`results/flood_2026-11-11_1456.md`.
 
 ---
 
 ## Attack Run — Before
+**Command run:** `python run_attacks.py --set attack_set/attack_set --label before`
 
-<!-- Every attack with its outcome and a held-or-broke mark.
-     `run_attacks.py --label before` produces the table. -->
+The complete 56-row text report is committed at `results/attack_run_2026-11-11_1518_before.md`.
 
+| Family | Result | Held or broke |
+|---|---|---|
+| Evasion (EV01–EV10) | EV01–EV09 were `unsure` or `human`; EV10 was `ai` at 0.807. | EV01–EV09 BROKE; EV10 HELD. |
+| False positives (FP01–FP08) | FP02, FP03, and FP05 labeled genuine human writing `ai` at 0.652, 0.659, and 0.692. | Those three BROKE; the other five HELD. |
+| Prompt injection (PI01–PI06) | All requests were treated as text to score; none changed the route, labels, or audit log. | HELD. |
+| Malformed (MF01–MF08, RQ01–RQ12) | MF03–MF07, RQ02, and RQ06 were accepted with 201. The remaining malformed requests returned 400 or 413. | Those seven BROKE; the remaining thirteen HELD. |
+| Flood (FL01_01–FL01_12) | Requests 1–8 returned 201 and 9–12 returned 429. | HELD. |
 
+**Audit log evidence:** `logs/audit.jsonl` contains each decision with timestamp, content ID, creator ID, guess, both signal scores, combined score, label, and status. It also contains the flood rejections with `event: "rejected"`, `reason: "rate_limited"`, and `status: "rejected"`.
 
-**Ten audit log entries from the run**
+**Ten actual audit entries (unaltered JSONL):**
 
-<!-- Choose entries that show the interesting failures, not the ten easiest. -->
-
-```json
-
+```jsonl
+{"timestamp":"2026-11-11T15:17:57-06:00","content_id":"6bae1361-9e0c-4731-93d0-5dd4af3eeb52","creator_id":"attacker_EV01","guess":"unsure","model_score":0.1635,"style_score":0.5379,"combined_score":0.3507,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-11-11T15:17:57-06:00","content_id":"af1875bc-419f-4205-a1fa-38f5e068dea6","creator_id":"attacker_EV02","guess":"unsure","model_score":0.5943,"style_score":0.2041,"combined_score":0.3992,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-11-11T15:17:57-06:00","content_id":"e99ad991-6eb0-43e2-92fe-58df2bd831f5","creator_id":"attacker_EV03","guess":"unsure","model_score":0.6662,"style_score":0.3758,"combined_score":0.521,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-10-29T16:51:14-05:00","content_id":"cc37a228-c103-461c-95ac-38ccd8fb884b","creator_id":"calibration-varied-human-like","guess":"human","model_score":0.1292,"style_score":0.4534,"combined_score":0.2913,"label":"This writing looks more likely to have been written by a person. This is not a final judgment.","status":"decided"}
+{"timestamp":"2026-10-29T16:12:22-05:00","content_id":"7991af37-4c56-4fbc-aaed-efb13977b43e","creator_id":"manual-check","guess":"unsure","model_score":0.5063,"style_score":0.4116,"combined_score":0.4589,"label":"We cannot confidently determine how this writing was created. No action is needed, and you may appeal this result.","status":"decided"}
+{"timestamp":"2026-10-29T16:51:14-05:00","content_id":"cbb188e0-26e0-4ac1-9472-ae6f338850e3","creator_id":"calibration-regular-ai-like","guess":"ai","model_score":0.8249,"style_score":0.5466,"combined_score":0.6857,"label":"This writing shows patterns often associated with AI-generated text. This is not proof of authorship; you may appeal this result.","status":"decided"}
+{"timestamp":"2026-11-11T14:56:45-06:00","creator_id":"flood_tester","event":"rejected","status":"rejected","reason":"rate_limited","limit":"8 per 1 minute"}
+{"timestamp":"2026-10-29T16:12:39-05:00","creator_id":"check","event":"rejected","status":"rejected","reason":"missing_or_empty_text"}
+{"timestamp":"2026-10-29T16:12:39-05:00","creator_id":"check","event":"rejected","status":"rejected","reason":"text_too_large","text_length":12001}
+{"timestamp":"2026-10-29T16:12:22-05:00","content_id":"7991af37-4c56-4fbc-aaed-efb13977b43e","creator_id":"manual-check","event":"appeal","status":"under_review","reasoning":"This is a firsthand account of my repair work."}
 ```
 
-**The single worst outcome** — the one I'd least want to explain to a writer
-whose work got caught by it:
-
-
+**Worst outcome:** FP03 called careful writing by a non-native English speaker AI. A real writer would receive an accusation because the score fell just over the old 0.65 label boundary.
 
 ---
 
@@ -275,34 +294,25 @@ whose work got caught by it:
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. False positives | 0 of 10 self-authored texts labeled AI | 0/10 | 0/10 | 0/10 | MET |
+| 2. Label coverage | 3 of 3 labels appear in 6 inputs | 1/3 | 1/3 | 1/3 | MISSED |
+| 3. Appeal path | one AI and one unsure appeal per trial | 0/2 qualifying | 0/2 qualifying | 0/2 qualifying | MISSED |
+| 4. Bad input | invalid requests rejected and recovery works | 4/6 boundaries | 4/6 | 4/6 | MISSED |
+| 5. Score separation | AI average is ≥0.50 above human with no overlap | not met | not met | not met | MISSED |
 
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
 
 ```json
-
+[{"status":201,"guess":"unsure"},{"status":201,"guess":"unsure"},
+ {"status":400},{"status":201,"guess":"human"}]
 ```
+
+This representative output was produced by `run_eval.py::main`; the complete real output is in `results/run_2026-11-11_1533_before-final.md` and `results/run_2026-11-11_1533_after-final2.md`.
 
 **Diagnoses**
 
-<!-- For each miss AND each broken attack: the stage and the mechanism.
-
-     Your service has five stages: the route, signal one, signal two, the
-     combining rule, and the label mapping.
-
-     Not a diagnosis:  "The evasion attacks got through."
-     A diagnosis:      "Four evasion inputs got through. All four had typos
-                        added to AI-generated text. My second signal measures
-                        word variety, and typos raise word variety — so it read
-                        them as more human. My combining rule weights that
-                        signal at 0.6, so it dragged the whole score down."
-
-     Look for a pattern. Five failures on one signal is one problem, not five. -->
+Criterion 2 and 5 missed at the signal/combining stage: the model and style signals clustered the evaluation controls in the middle, and the equal-weight average produced mostly `unsure` scores. This does not mean no input ever reached the AI band: staff attack EV10 scored 0.807 and remained `ai`; the problem is that the evaluation control set did not reliably reach that band. Criterion 3 missed because the criterion requires one AI-labeled and one unsure-labeled appeal per trial. The endpoint itself worked: all six submitted appeals returned `under_review` and were logged. Criterion 4 missed at the route: a missing or non-string `creator_id` is converted to `unknown` before the final validation check and is accepted instead of rejected. The evasion failures follow the same signal weakness: short, edited, or stylistically altered AI text pulls at least one signal into the human/unsure region.
 
 
 
@@ -310,20 +320,17 @@ that produced it:
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** Raised `AI_THRESHOLD` in `config.py` from 0.65 to 0.70. No signal, weight, route, or other threshold changed.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:** FP02, FP03, and FP05 were genuine human submissions narrowly above the old label boundary.
 
 ### Attack Run — After
 
-<!-- Same format. `run_attacks.py --label after` -->
+**Command run:** `python run_attacks.py --set attack_set/attack_set --label after`
 
+Complete results: `results/attack_run_2026-11-11_1518_after.md`. FP02, FP03, and FP05 changed from `ai` to `unsure`; EV10 remained `ai` at 0.807. All other attack outcomes were unchanged.
 
-
-**Did it help, and how do I know:**
-
-<!-- Widening the unsure band usually fixes one problem and creates another.
-     Reporting that trade honestly is worth full credit. -->
+**Did it help, and how do I know:** Yes: false-positive AI labels fell from 3/8 to 0/8. The trade is that more content remains `unsure`, including AI text that the service cannot confidently label.
 
 
 
@@ -331,15 +338,13 @@ that produced it:
 
 ## What's Still Broken
 
-<!-- For each attack still getting through and each criterion still missed:
-     what you'd do, and why you stopped. -->
+I would next fix route validation so a missing or non-string creator ID receives a logged 400, then re-run the attack set. I would then calibrate both signals against a labeled validation set and consider sliding-window perplexity for mixed-authorship text. I stopped because the assignment permits one measured improvement and the threshold change was the one selected from the false-positive diagnosis; making route and signal changes too would confound the before/after comparison. Longer-term, signal calibration is needed because score clustering explains the coverage, separation, and evasion failures.
 
 
 
 **The trade I'd make if this ran for real:**
 
-<!-- Two sentences. Fewer wrong accusations means more AI text getting through.
-     Say which way you'd go and WHO PAYS FOR IT. -->
+In production I would keep the wider unsure band because a false AI accusation harms the writer directly. The cost is borne by moderators and the platform: they must review more cases, and some AI-written text will not receive a high-confidence label.
 
 
 
