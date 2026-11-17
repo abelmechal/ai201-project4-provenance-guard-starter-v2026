@@ -52,6 +52,17 @@ DETECTOR_MAX_TOKENS = 400
 # get a clear busy response instead of forming an unbounded queue.
 DETECTOR_TIMEOUT_SECONDS = float(os.getenv("AI201_DETECTOR_TIMEOUT", "15"))
 
+
+def test_detector_delay_seconds() -> float:
+    """Return a local-only test delay; production requests always get zero."""
+    if os.getenv("AI201_TEST_MODE", "0") != "1":
+        return 0.0
+    try:
+        delay = float(os.getenv("AI201_TEST_DETECTOR_DELAY", "0"))
+    except ValueError:
+        return 0.0
+    return min(max(delay, 0.0), 60.0)
+
 # Protect the local service from a request that is so large it makes scoring
 # unresponsive.  This still leaves plenty of room for a normal submission.
 MAX_TEXT_CHARS = 12_000

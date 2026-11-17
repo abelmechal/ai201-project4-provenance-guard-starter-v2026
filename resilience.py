@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import threading
+import time
 
 import config
 import detector
@@ -18,6 +19,14 @@ class DetectorBusy(RuntimeError):
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="detector")
 _state_lock = threading.Lock()
 _in_flight = False
+
+
+def _score_with_optional_test_delay(text: str) -> float:
+    """Delay only in explicitly enabled local test mode, then score normally."""
+    delay = config.test_detector_delay_seconds()
+    if delay:
+        time.sleep(delay)
+    return detector.model_signal(text)
 
 
 def _mark_idle(_future) -> None:
@@ -42,7 +51,7 @@ def score_text(text: str) -> float:
             raise DetectorBusy("The detector is still finishing an earlier request.")
         _in_flight = True
 
-    future = _executor.submit(detector.model_signal, text)
+    future = _executor.submit(_score_with_optional_test_delay, text)
     future.add_done_callback(_mark_idle)
     try:
         return future.result(timeout=config.DETECTOR_TIMEOUT_SECONDS)
