@@ -395,6 +395,17 @@ def get_log():
     return jsonify({"count": len(entries), "entries": entries})
 
 
+def warm_detector_on_startup() -> None:
+    """Load the local model before listening when explicit readiness is needed."""
+    if not config.WARMUP_DETECTOR_ON_STARTUP:
+        return
+    print("Warming detector before accepting requests...")
+    try:
+        print(f"  {detector.warm_up()}")
+    except detector.DetectorUnavailable as exc:
+        raise SystemExit(f"Detector warm-up failed; server was not started: {exc}") from exc
+
+
 def main():
     print(f"Provenance Guard on http://{config.HOST}:{config.PORT}")
     print(f"  detector model:  {config.DETECTOR_MODEL}")
@@ -407,6 +418,7 @@ def main():
     print("    -d '{\"message\": \"hello\"}'")
     print()
     # debug=True hands out an interactive debugger, so it's local-only — see config.py
+    warm_detector_on_startup()
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
 
 

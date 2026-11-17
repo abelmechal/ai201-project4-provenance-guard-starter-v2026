@@ -342,18 +342,21 @@ process cannot receive environment changes made later in PowerShell.
 $env:AI201_TEST_MODE = "1"
 $env:AI201_TEST_DETECTOR_DELAY = "18"
 $env:AI201_TEST_DELAY_ONCE = "1"
+$env:AI201_WARMUP_DETECTOR = "1"
 python app.py
 ```
 
-The first detector job in that server process waits 18 seconds inside the
-worker. The caller receives a 15-second timeout, the worker remains visible as
-`detector_runtime.in_flight: true`, and later jobs run normally after it
-finishes. Start a fresh server for each one-shot timeout trial.
+The warm-up flag loads GPT-2 before the port opens, so the first detector job
+in that server process waits 18 seconds inside the worker rather than combining
+the test delay with cold model loading. The caller receives a 15-second
+timeout, the worker remains visible as `detector_runtime.in_flight: true`, and
+later jobs run normally after it finishes. Start a fresh server for each
+one-shot timeout trial.
 
 For ordinary submissions, use a fresh PowerShell session without these
 variables, or remove them before starting the server:
 
 ```powershell
-Remove-Item Env:AI201_TEST_MODE, Env:AI201_TEST_DETECTOR_DELAY, Env:AI201_TEST_DELAY_ONCE -ErrorAction SilentlyContinue
+Remove-Item Env:AI201_TEST_MODE, Env:AI201_TEST_DETECTOR_DELAY, Env:AI201_TEST_DELAY_ONCE, Env:AI201_WARMUP_DETECTOR -ErrorAction SilentlyContinue
 python app.py
 ```

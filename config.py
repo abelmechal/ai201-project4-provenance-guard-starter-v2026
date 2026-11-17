@@ -52,6 +52,11 @@ DETECTOR_MAX_TOKENS = 400
 # get a clear busy response instead of forming an unbounded queue.
 DETECTOR_TIMEOUT_SECONDS = float(os.getenv("AI201_DETECTOR_TIMEOUT", "15"))
 
+# Opt in when readiness matters more than a fast process start. The detector
+# loads before the HTTP port opens, so a writer's first request does not also
+# pay the model-load cost.
+WARMUP_DETECTOR_ON_STARTUP = os.getenv("AI201_WARMUP_DETECTOR", "0") == "1"
+
 
 def test_detector_delay_seconds() -> float:
     """Return a local-only test delay; production requests always get zero."""
