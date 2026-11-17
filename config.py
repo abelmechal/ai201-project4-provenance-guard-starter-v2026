@@ -46,6 +46,12 @@ DETECTOR_MODEL = os.getenv("AI201_DETECTOR_MODEL", "gpt2")
 # 300 words, which is enough for the signal to mean something.
 DETECTOR_MAX_TOKENS = 400
 
+# A local CPU model can occasionally stall while the computer is under load.
+# The web request gets this many seconds to wait for one scoring operation.
+# The worker finishes in the background if it was already running; new requests
+# get a clear busy response instead of forming an unbounded queue.
+DETECTOR_TIMEOUT_SECONDS = float(os.getenv("AI201_DETECTOR_TIMEOUT", "15"))
+
 # Protect the local service from a request that is so large it makes scoring
 # unresponsive.  This still leaves plenty of room for a normal submission.
 MAX_TEXT_CHARS = 12_000
