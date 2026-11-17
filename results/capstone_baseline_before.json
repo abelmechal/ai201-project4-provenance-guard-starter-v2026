@@ -1,0 +1,43 @@
+{
+  "criterion": "5. Normal-path regression check",
+  "phase": "before_improvement",
+  "test_mode": false,
+  "measured_at_utc": "2026-11-17T05:23:51Z",
+  "trials": [
+    {
+      "trial": 1,
+      "creator_id": "capstone-baseline-cold-1",
+      "client_duration_ms": 313.32,
+      "http_status": 201,
+      "content_id": "e13f285c-2a3d-4ef8-8a85-e41f334bf886",
+      "response_fields": ["content_id", "confidence", "guess", "label", "model_score", "style_score"],
+      "audit_duration_ms": 278.66,
+      "audit_text_length": 616,
+      "audit_http_status": 201
+    },
+    {
+      "trial": 2,
+      "creator_id": "capstone-baseline-warm-2",
+      "client_duration_ms": 266.73,
+      "http_status": 201,
+      "content_id": "43e32d89-c30e-415e-9a75-81dc0029e7d1",
+      "response_fields": ["content_id", "confidence", "guess", "label", "model_score", "style_score"],
+      "audit_duration_ms": 238.29,
+      "audit_text_length": 572,
+      "audit_http_status": 201
+    },
+    {
+      "trial": 3,
+      "creator_id": "capstone-baseline-warm-3",
+      "client_duration_ms": 282.29,
+      "http_status": 201,
+      "content_id": "3ea1e724-0f74-4bea-9370-5219803fd5d8",
+      "response_fields": ["content_id", "confidence", "guess", "label", "model_score", "style_score"],
+      "audit_duration_ms": 278.13,
+      "audit_text_length": 545,
+      "audit_http_status": 201
+    }
+  ],
+  "verdict": "MET",
+  "notes": "All three controlled normal submissions met the 8.0-second response target, returned all six required fields, and wrote the required audit fields."
+}
