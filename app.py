@@ -24,6 +24,7 @@ Routes:
     GET  /health      is the service up, and is the model loaded
 """
 
+import time
 import uuid
 
 from flask import Flask, jsonify, request
@@ -31,6 +32,7 @@ from flask import Flask, jsonify, request
 import audit
 import config
 import detector
+import resilience
 import scoring
 import stylometry
 
@@ -216,9 +218,15 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
+    started_at = time.perf_counter()
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
-        audit.log_rejection("unknown", "invalid_json")
+        audit.log_rejection(
+            "unknown", "invalid_json", route="submit",
+            input_summary={"payload_type": type(payload).__name__},
+            output_summary={"http_status": 400, "error": "invalid_json"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return jsonify({"error": "invalid_json", "message": "Send a JSON object."}), 400
 
     text = payload.get("text")
@@ -226,24 +234,75 @@ def submit():
     safe_creator = creator_id.strip() if isinstance(creator_id, str) else "unknown"
 
     if not isinstance(text, str) or not text.strip():
-        audit.log_rejection(safe_creator, "missing_or_empty_text")
+        audit.log_rejection(
+            safe_creator, "missing_or_empty_text", route="submit",
+            input_summary={"text_length": len(text) if isinstance(text, str) else None},
+            output_summary={"http_status": 400, "error": "invalid_text"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return jsonify({"error": "invalid_text", "message": "text must be a non-empty string."}), 400
     if len(text) > config.MAX_TEXT_CHARS:
-        audit.log_rejection(safe_creator, "text_too_large", text_length=len(text))
+        audit.log_rejection(
+            safe_creator, "text_too_large", route="submit", text_length=len(text),
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 413, "error": "text_too_large"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return jsonify({
             "error": "text_too_large",
             "message": f"text must be {config.MAX_TEXT_CHARS} characters or fewer.",
         }), 413
     if not safe_creator:
-        audit.log_rejection("unknown", "missing_creator_id")
+        audit.log_rejection(
+            "unknown", "missing_creator_id", route="submit",
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 400, "error": "invalid_creator_id"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return jsonify({"error": "invalid_creator_id", "message": "creator_id must be a non-empty string."}), 400
 
     try:
-        model_score = detector.model_signal(text)
+        model_score = resilience.score_text(text)
     except detector.DetectorUnavailable as exc:
+        audit.log_rejection(
+            safe_creator, "detector_unavailable", route="submit", failure_stage="detector",
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 503, "error": "detector_unavailable"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return jsonify({"error": "detector_unavailable", "message": str(exc)}), 503
+    except resilience.DetectorTimedOut as exc:
+        audit.log_rejection(
+            safe_creator, "detector_timeout", route="submit", failure_stage="detector",
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 503, "error": "detector_timeout"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
+        return jsonify({"error": "detector_timeout", "message": str(exc)}), 503
+    except resilience.DetectorBusy as exc:
+        audit.log_rejection(
+            safe_creator, "detector_busy", route="submit", failure_stage="detector",
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 503, "error": "detector_busy"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
+        return jsonify({"error": "detector_busy", "message": str(exc)}), 503
     except ValueError as exc:
+        audit.log_rejection(
+            safe_creator, "text_too_short", route="submit", failure_stage="detector",
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 400, "error": "text_too_short"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
         return jsonify({"error": "text_too_short", "message": str(exc)}), 400
+    except Exception:  # noqa: BLE001
+        audit.log_rejection(
+            safe_creator, "scoring_failed", route="submit", failure_stage="detector",
+            input_summary={"text_length": len(text)},
+            output_summary={"http_status": 503, "error": "scoring_failed"},
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+        )
+        return jsonify({"error": "scoring_failed", "message": "Unable to score text safely. Try again later."}), 503
 
     style_score = stylometry.style_signal(text)
     confidence = scoring.combine_signals(model_score, style_score)
@@ -258,6 +317,10 @@ def submit():
         style_score=style_score,
         combined_score=confidence,
         label=label,
+        route="submit",
+        input_summary={"text_length": len(text)},
+        output_summary={"http_status": 201, "guess": guess, "confidence": confidence},
+        duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
     )
     return jsonify({
         "content_id": content_id,
