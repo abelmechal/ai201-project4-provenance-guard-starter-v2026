@@ -379,3 +379,17 @@ that produced it:
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
+
+## Capstone
+
+**What This Extends**
+
+This capstone extends my Provenance Guard web service from Project 4. The new work hardens the submission path: if the local detector is unavailable, slow, or fails while scoring text, the service will return a clear, safe response and record a structured failure event instead of leaving a request without an auditable result.
+
+**The Shape**
+
+I chose Shape B — harden against failure. I am adding one failure-handling layer around detector scoring, including a bounded wait, a stable error response, and logging that identifies the failure stage and duration. Out of scope are retraining or replacing the GPT-2 detector, changing the two-signal scoring thresholds, redesigning the browser interface, and cloud hosting; this project uses the documented local-with-logs path because its detector runs locally.
+
+**Running It**
+
+I am using Path B, local with logs. The reproducible start command, Python version, dependencies, and local model requirements are documented in [RUNNING.md](RUNNING.md).
