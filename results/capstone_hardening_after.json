@@ -1,0 +1,26 @@
+{
+  "phase": "after_startup_warmup",
+  "improvement_commit": "b013a00",
+  "configuration": {
+    "AI201_TEST_MODE": "1",
+    "AI201_TEST_DELAY_ONCE": "1",
+    "AI201_TEST_DETECTOR_DELAY": "18",
+    "AI201_WARMUP_DETECTOR": "1"
+  },
+  "timeout_trials": [
+    {"trial": 1, "creator_id": "capstone-timeout-1", "http_status": 503, "error": "detector_timeout", "audit_duration_ms": 15015.0},
+    {"trial": 2, "creator_id": "capstone-timeout-2", "http_status": 503, "error": "detector_timeout", "audit_duration_ms": 15004.56},
+    {"trial": 3, "creator_id": "capstone-timeout-3", "http_status": 503, "error": "detector_timeout", "audit_duration_ms": 15002.78}
+  ],
+  "busy_and_recovery_trials": [
+    {"trial": 1, "busy_creator_id": "capstone-post-busy-1", "busy_status": 503, "busy_error": "detector_busy", "busy_audit_duration_ms": 0.34, "recovery_creator_id": "capstone-post-recovery-1", "recovery_status": 201, "recovery_audit_duration_ms": 314.6},
+    {"trial": 2, "busy_creator_id": "capstone-post-busy-2", "busy_status": 503, "busy_error": "detector_busy", "busy_audit_duration_ms": 0.34, "recovery_creator_id": "capstone-post-recovery-2", "recovery_status": 201, "recovery_audit_duration_ms": 262.94},
+    {"trial": 3, "busy_creator_id": "capstone-post-busy-3", "busy_status": 503, "busy_error": "detector_busy", "busy_client_duration_ms": 8.82, "busy_audit_duration_ms": 0.31, "recovery_creator_id": "capstone-post-recovery-3", "recovery_status": 201, "recovery_client_duration_ms": 311.48, "recovery_audit_duration_ms": 298.68}
+  ],
+  "verdicts": {
+    "criterion_1_timeout_response": "MET",
+    "criterion_2_timeout_audit_record": "MET",
+    "criterion_3_busy_worker_protection": "MET",
+    "criterion_4_recovery_after_slow_job": "MET"
+  }
+}
