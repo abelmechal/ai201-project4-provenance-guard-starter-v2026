@@ -19,11 +19,21 @@ class DetectorBusy(RuntimeError):
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="detector")
 _state_lock = threading.Lock()
 _in_flight = False
+_test_delay_consumed = False
 
 
 def _score_with_optional_test_delay(text: str) -> float:
-    """Delay only in explicitly enabled local test mode, then score normally."""
+    """Delay only the configured test job, then score normally."""
+    global _test_delay_consumed
     delay = config.test_detector_delay_seconds()
+    if delay and config.test_detector_delay_once():
+        # Consume the delay before sleeping. The lock is held only for this
+        # state change, so /health can still report in_flight during the wait.
+        with _state_lock:
+            if _test_delay_consumed:
+                delay = 0.0
+            else:
+                _test_delay_consumed = True
     if delay:
         time.sleep(delay)
     return detector.model_signal(text)

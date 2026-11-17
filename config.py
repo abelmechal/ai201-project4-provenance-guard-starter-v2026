@@ -63,6 +63,11 @@ def test_detector_delay_seconds() -> float:
         return 0.0
     return min(max(delay, 0.0), 60.0)
 
+
+def test_detector_delay_once() -> bool:
+    """Use one delayed scoring job per test server unless explicitly disabled."""
+    return os.getenv("AI201_TEST_DELAY_ONCE", "1") == "1"
+
 # Protect the local service from a request that is so large it makes scoring
 # unresponsive.  This still leaves plenty of room for a normal submission.
 MAX_TEXT_CHARS = 12_000
