@@ -306,3 +306,54 @@ is evidence, and the entries you paste into your README are what unit 8 grades.
 
 **Do not delete and recreate this repository.** You submit the same URL both
 units.
+
+---
+
+## Capstone local run (Path B)
+
+The capstone runs locally because the GPT-2 detector needs roughly 550 MB on
+disk plus PyTorch and model memory. Use Python 3.13 and the pinned packages in
+`requirements.txt`.
+
+From a clean checkout in PowerShell:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python detector.py
+python app.py
+```
+
+The final command starts the service at `http://127.0.0.1:5000`. In a second
+PowerShell window, check the running system with:
+
+```powershell
+curl.exe --silent http://127.0.0.1:5000/health
+```
+
+### Controlled timeout test mode
+
+This mode is only for the capstone failure trials. Set the variables in the
+same PowerShell window **before** starting `python app.py`; a running Python
+process cannot receive environment changes made later in PowerShell.
+
+```powershell
+$env:AI201_TEST_MODE = "1"
+$env:AI201_TEST_DETECTOR_DELAY = "18"
+$env:AI201_TEST_DELAY_ONCE = "1"
+python app.py
+```
+
+The first detector job in that server process waits 18 seconds inside the
+worker. The caller receives a 15-second timeout, the worker remains visible as
+`detector_runtime.in_flight: true`, and later jobs run normally after it
+finishes. Start a fresh server for each one-shot timeout trial.
+
+For ordinary submissions, use a fresh PowerShell session without these
+variables, or remove them before starting the server:
+
+```powershell
+Remove-Item Env:AI201_TEST_MODE, Env:AI201_TEST_DETECTOR_DELAY, Env:AI201_TEST_DELAY_ONCE -ErrorAction SilentlyContinue
+python app.py
+```
