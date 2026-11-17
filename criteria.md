@@ -137,4 +137,59 @@ A meaningful classification engine must exhibit wide discriminative separation o
 
      A number you missed stays where it is, gets diagnosed, and gets a fix
      attempted. That's where the points are.
+-->
+
+# Capstone Acceptance Criteria
+
+## 1. Bounded detector timeout
+
+**Criterion:** When detector scoring runs longer than the configured 15.0-second limit, the API must stop waiting—while letting the background detector task finish—and return an HTTP 503 Service Unavailable JSON response containing an `error` field whose value is `detector_timeout` (alongside its descriptive `message` field) within 15.5 seconds of the request across 3 of 3 trials.
+
+**Target:** Maximum caller wait time of 15.5 seconds for the 15.0-second timeout setting, HTTP 503, and JSON error value `detector_timeout`, allowing additional fields such as `message`, in 3 of 3 trials.
+
+**How I will test it:** I will configure a controlled test hook on the detector scoring step to sleep for 18.0 seconds, send a valid `POST /submit` request, and record its wall-clock duration, status, and error field. I will poll `GET /health` until `detector_runtime.in_flight` becomes false between runs and repeat this three times.
+
+**Why this target:** Writers actively drafting or reviewing text cannot have their UI hang indefinitely on a stalled detector call; returning a predictable 503 at 15 seconds keeps the client responsive so they can continue editing.
+
+## 2. Timeout audit record
+
+**Criterion:** Every `POST /submit` request that hits the 15.0-second detector timeout must write an audit log entry containing `reason: "detector_timeout"`, `failure_stage: "detector"`, `duration_ms` at least 15000, `input_summary.text_length` matching the submitted character count, and `output_summary.http_status: 503` in 3 of 3 trials.
+
+**Target:** All 5 of 5 exact audit fields and values are present across 3 of 3 timeout trials.
+
+**How I will test it:** I will trigger an 18.0-second simulated detector delay with submissions of distinct, known character lengths, then inspect the matching audit entry after each run. I will verify the five required fields without storing raw text or hashes.
+
+**Why this target:** Preserving writer privacy while capturing exact failure-stage and text-length metrics lets me diagnose whether timeouts correlate with long submissions or model slowdowns without logging sensitive draft content.
+
+## 3. Busy-worker protection
+
+**Criterion:** While a slow detector task is still finishing in the background after its original caller timed out at 15.0 seconds, a second `POST /submit` request must be rejected within 0.5 seconds with HTTP 503 and a JSON `error` field whose value is `detector_busy`, alongside its descriptive message, in 3 of 3 trials.
+
+**Target:** Rejection in 0.5 seconds or less, HTTP 503, and JSON error value `detector_busy` across 3 of 3 trials. No `Retry-After` header is required.
+
+**How I will test it:** I will submit a request with a 20.0-second simulated detector delay. At the 16.0-second mark, while `GET /health` reports `detector_runtime.in_flight` as true, I will send a second valid request and measure its response. I will wait for the health endpoint to report false and repeat for three total trials.
+
+**Why this target:** Failing fast when the single detector worker is still occupied prevents request pile-ups and memory exhaustion on local hardware, protecting overall service stability.
+
+## 4. Recovery after a slow job
+
+**Criterion:** Within 1.0 second after `GET /health` reports `detector_runtime.in_flight` is false following a slow detector job, a subsequent valid `POST /submit` request must succeed with HTTP 201 Created and return `content_id`, `confidence`, `guess`, `label`, `model_score`, and `style_score` in 3 of 3 trials.
+
+**Target:** HTTP 201 and all 6 of 6 response fields on the first request submitted within 1.0 second of `detector_runtime.in_flight` becoming false across 3 of 3 trials.
+
+**How I will test it:** I will trigger a 17.0-second slow job that times out to its caller at 15.0 seconds, poll the health endpoint until `detector_runtime.in_flight` changes from true to false, then send a normal un-delayed submission within 1.0 second. I will repeat this timeout-to-recovery cycle three times.
+
+**Why this target:** A single slow inference pass must not leave the worker permanently locked; automatic recovery ensures writers can resume checking provenance after a transient slowdown without a manual service restart.
+
+## 5. Normal-path regression check
+
+**Criterion:** When the detector is healthy and idle (`detector_runtime.in_flight` is false), an ordinary valid `POST /submit` request must return HTTP 201 Created within 8.0 seconds, with `content_id`, `confidence`, `guess`, `label`, `model_score`, and `style_score` in the response, and record `duration_ms` under 8000, `input_summary.text_length`, and `output_summary.http_status: 201` in the audit log, in 3 of 3 trials.
+
+**Target:** HTTP 201, response time of 8.0 seconds or less on local CPU, all 6 of 6 response fields, and all 3 baseline audit fields across 3 of 3 trials.
+
+**How I will test it:** With no artificial delays active and `GET /health` showing the detector idle, I will submit a standard approximately 200-word writing sample. I will verify the status, duration, six JSON fields, and audit fields, then repeat with three different valid writing samples.
+
+**Why this target:** Adding timeout wrappers and busy-worker guards must not alter scoring outputs, HTTP status codes, or privacy-preserving audit logs on the standard happy path that writers rely on every day.
+
+<!--
      ───────────────────────────────────────────────────────────────────────── -->
