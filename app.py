@@ -162,6 +162,7 @@ def health():
         "ok": True,
         "detector_model": config.DETECTOR_MODEL,
         "detector_loaded": loaded,
+        "detector_runtime": resilience.status(),
         "rate_limiting": config.RATE_LIMITING_ENABLED,
         "log_entries": len(audit.read_entries()),
     })

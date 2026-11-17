@@ -50,3 +50,12 @@ def score_text(text: str) -> float:
         raise DetectorTimedOut(
             f"Detector did not finish within {config.DETECTOR_TIMEOUT_SECONDS:g} seconds."
         ) from exc
+
+
+def status() -> dict:
+    """Return the small amount of runtime state safe to expose on /health."""
+    with _state_lock:
+        return {
+            "in_flight": _in_flight,
+            "timeout_seconds": config.DETECTOR_TIMEOUT_SECONDS,
+        }
