@@ -1,5 +1,15 @@
 # Running Provenance Guard
 
+> ## Demo Day / Capstone: read this first
+>
+> This is the **finished** Provenance Guard service, not the starter project.
+> For a clean setup, follow [Capstone local run (Path B)](#capstone-local-run-path-b)
+> below. You need **Python 3.13**, the pinned dependencies, and at least
+> **9 GB of free disk space** for PyTorch and the local GPT-2 model. The
+> older course notes later in this file are retained for project history, but
+> they describe earlier milestones and should not be treated as current setup
+> instructions.
+
 Everything about how the starter works.
 
 This is a **web service**. It runs on your machine and you talk to it with
@@ -68,7 +78,7 @@ sent it data, it sent something back.
 `/ping` still answers: if it does, the problem is in your handler; if it
 doesn't, it's the service itself, and that's a help-channel question.
 
-Then try the route you're going to build:
+Then try the completed submission route:
 
 ```bash
 curl -X POST http://127.0.0.1:5000/submit \
@@ -76,8 +86,8 @@ curl -X POST http://127.0.0.1:5000/submit \
   -d '{"text": "some writing", "creator_id": "me"}'
 ```
 
-It returns a `501` saying it isn't built yet. **That's the correct starting
-position.**
+It returns a `201` decision for valid writing, including `content_id`,
+`confidence`, `guess`, `label`, `model_score`, and `style_score`.
 
 ---
 
@@ -88,8 +98,8 @@ position.**
 | `POST /ping` | **works** | The example. Don't edit it |
 | `GET /health` | **works** | Is the service up, is the model loaded |
 | `GET /log` | **works** | The audit log, as JSON |
-| `POST /submit` | **you build it** | Milestones 3, 4, 5 |
-| `POST /appeal` | **you build it** | Milestone 5 |
+| `POST /submit` | **works** | Scores valid writing and writes an audit record |
+| `POST /appeal` | **works** | Records an appeal and moves the item to review |
 
 ---
 
